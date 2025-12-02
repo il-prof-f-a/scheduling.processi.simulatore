@@ -1,0 +1,5 @@
+{
+  "name": "Simulatore di Scheduling della Barbieria",
+  "description": "Un'applicazione web per visualizzare e comprendere gli algoritmi di scheduling dei processi del sistema operativo attraverso la simulazione di un barbiere che serve i clienti. Progettato per studenti di informatica del terzo anno delle scuole superiori.",
+  "requestFramePermissions": []
+}
