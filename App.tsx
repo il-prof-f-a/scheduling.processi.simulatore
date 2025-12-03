@@ -13,7 +13,7 @@ const App: React.FC = () => {
   const [clients, setClients] = useState<Client[]>([]);
   const [algorithm, setAlgorithm] = useState<SchedulingAlgorithm>(SchedulingAlgorithm.FCFS);
   const [timeSlice, setTimeSlice] = useState<number>(4);
-  const [useContextSwitch, setUseContextSwitch] = useState<boolean>(true);
+  const [useContextSwitch, setUseContextSwitch] = useState<boolean>(false);
   const [simulationResult, setSimulationResult] = useState<SimulationResult | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [key, setKey] = useState<number>(0); // Used to re-mount components

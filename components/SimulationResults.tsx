@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Client, SimulationResult } from '../types';
 import { CLIENT_COLORS } from '../constants';
@@ -105,7 +104,7 @@ const GanttChart: React.FC<{ result: SimulationResult, clients: Client[] }> = ({
     );
 };
 
-const MetricsDisplay: React.FC<{ result: SimulationResult }> = ({ result }) => {
+const MetricsDisplay: React.FC<{ result: SimulationResult, clients: Client[] }> = ({ result, clients }) => {
     const { completedClients, metrics } = result;
 
     return (
@@ -125,14 +124,18 @@ const MetricsDisplay: React.FC<{ result: SimulationResult }> = ({ result }) => {
                                     </tr>
                                 </thead>
                                 <tbody className="bg-slate-900/70 divide-y divide-slate-700">
-                                    {completedClients.map(c => (
-                                        <tr key={c.id}>
-                                            <td className="px-4 py-2 whitespace-nowrap text-sm font-medium">{c.name}</td>
-                                            <td className="px-4 py-2 whitespace-nowrap text-sm">{c.waitingTime?.toFixed(2)}</td>
-                                            <td className="px-4 py-2 whitespace-nowrap text-sm">{c.turnaroundTime?.toFixed(2)}</td>
-                                            <td className="px-4 py-2 whitespace-nowrap text-sm">{c.completionTime?.toFixed(2)}</td>
-                                        </tr>
-                                    ))}
+                                    {clients.map(originalClient => {
+                                        const c = completedClients.find(comp => comp.id === originalClient.id);
+                                        if (!c) return null;
+                                        return (
+                                            <tr key={c.id}>
+                                                <td className="px-4 py-2 whitespace-nowrap text-sm font-medium">{c.name}</td>
+                                                <td className="px-4 py-2 whitespace-nowrap text-sm">{c.waitingTime?.toFixed(2)}</td>
+                                                <td className="px-4 py-2 whitespace-nowrap text-sm">{c.turnaroundTime?.toFixed(2)}</td>
+                                                <td className="px-4 py-2 whitespace-nowrap text-sm">{c.completionTime?.toFixed(2)}</td>
+                                            </tr>
+                                        );
+                                    })}
                                 </tbody>
                             </table>
                         </div>
@@ -140,8 +143,21 @@ const MetricsDisplay: React.FC<{ result: SimulationResult }> = ({ result }) => {
                  </div>
             </div>
             <div>
+                <h3 className="text-xl font-bold text-cyan-400 mb-2">Metriche di Sistema</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="bg-slate-900/50 p-4 rounded-lg">
+                        <p className="text-sm text-slate-400">Efficienza CPU (Througput)</p>
+                        <p className="text-2xl font-bold">{metrics.throughput.toFixed(2)}%</p>
+                    </div>
+                     <div className="bg-slate-900/50 p-4 rounded-lg">
+                        <p className="text-sm text-slate-400">Numero di Context Switch</p>
+                        <p className="text-2xl font-bold">{metrics.contextSwitchCount}</p>
+                    </div>
+                </div>
+            </div>
+            <div>
                 <h3 className="text-xl font-bold text-cyan-400 mb-2">Metriche Medie</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="bg-slate-900/50 p-4 rounded-lg">
                         <p className="text-sm text-slate-400">Tempo Medio di Attesa</p>
                         <p className="text-2xl font-bold">{metrics.averageWaitingTime.toFixed(2)}</p>
@@ -149,10 +165,6 @@ const MetricsDisplay: React.FC<{ result: SimulationResult }> = ({ result }) => {
                     <div className="bg-slate-900/50 p-4 rounded-lg">
                         <p className="text-sm text-slate-400">Tempo Medio di Turnaround</p>
                         <p className="text-2xl font-bold">{metrics.averageTurnaroundTime.toFixed(2)}</p>
-                    </div>
-                    <div className="bg-slate-900/50 p-4 rounded-lg">
-                        <p className="text-sm text-slate-400">Throughput</p>
-                        <p className="text-2xl font-bold">{metrics.throughput.toFixed(2)} clienti/unità</p>
                     </div>
                 </div>
             </div>
@@ -189,7 +201,7 @@ const SimulationResults: React.FC<SimulationResultsProps> = ({ result, clients, 
                 <GanttChart result={result} clients={clients} />
             </div>
             <div className="flex-grow">
-                 <MetricsDisplay result={result} />
+                 <MetricsDisplay result={result} clients={clients} />
             </div>
         </div>
     );

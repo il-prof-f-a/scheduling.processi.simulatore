@@ -16,6 +16,7 @@ export interface Client {
   waitingTime?: number;
   turnaroundTime?: number;
   color?: string;
+  firstExecutionStartTime?: number;
 }
 
 export interface GanttBlock {
@@ -32,6 +33,7 @@ export interface SimulationResult {
     averageWaitingTime: number;
     averageTurnaroundTime: number;
     throughput: number;
+    contextSwitchCount: number;
   };
   totalTime: number;
 }

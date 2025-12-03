@@ -1,107 +1,201 @@
 import { Client, SchedulingAlgorithm, GanttBlock, SimulationResult } from '../types';
 
+// Fix: Changed the return type annotation to match the actual returned object shape.
+// The function returns a partial result which is then processed by `runSimulation`.
+const runStandardSimulation = (
+    clients: Client[],
+    algorithm: SchedulingAlgorithm,
+    timeSlice: number,
+    contextSwitchCost: number
+): { ganttChart: GanttBlock[]; completedClients: Client[]; contextSwitchCount: number } => {
+    let completedClients: Client[] = [];
+    const ganttChart: GanttBlock[] = [];
+    let readyQueue: Client[] = [];
+    let currentTime = 0;
+    let lastRunningClientId: number | null = null;
+    let contextSwitchCount = 0;
+    let futureClients = [...clients].sort((a, b) => a.arrivalTime - b.arrivalTime);
+
+    while (completedClients.length < clients.length) {
+        const newlyArrived = futureClients.filter(c => c.arrivalTime <= currentTime);
+        if (newlyArrived.length > 0) {
+            readyQueue.push(...newlyArrived);
+            futureClients = futureClients.filter(c => !newlyArrived.find(na => na.id === c.id));
+        }
+
+        if (readyQueue.length === 0) {
+            if (futureClients.length > 0) {
+                currentTime = futureClients[0].arrivalTime;
+                continue;
+            } else {
+                break;
+            }
+        }
+
+        if (algorithm === SchedulingAlgorithm.SJF) {
+            readyQueue.sort((a, b) => a.burstTime - b.burstTime || a.arrivalTime - b.arrivalTime);
+        } else if (algorithm === SchedulingAlgorithm.SRTF) {
+            readyQueue.sort((a, b) => a.remainingTime - b.remainingTime || a.arrivalTime - b.arrivalTime);
+        } else if (algorithm === SchedulingAlgorithm.FCFS) {
+            readyQueue.sort((a, b) => a.arrivalTime - b.arrivalTime || a.id - b.id);
+        }
+
+        const clientToRun = readyQueue.shift()!;
+        
+        const isSwitching = lastRunningClientId !== null && lastRunningClientId !== clientToRun.id && completedClients.some(c => c.id === lastRunningClientId);
+        if (lastRunningClientId !== null && lastRunningClientId !== clientToRun.id) {
+            contextSwitchCount++;
+            if (contextSwitchCost > 0) {
+                ganttChart.push({ clientId: 0, start: currentTime, end: currentTime + contextSwitchCost, type: 'contextSwitch' });
+                currentTime += contextSwitchCost;
+                
+                const arrivedDuringCS = futureClients.filter(c => c.arrivalTime <= currentTime);
+                if (arrivedDuringCS.length > 0) {
+                    readyQueue.push(...arrivedDuringCS);
+                    futureClients = futureClients.filter(c => !arrivedDuringCS.find(ac => ac.id === c.id));
+                }
+            }
+        }
+        
+        if (clientToRun.firstExecutionStartTime === undefined) {
+            clientToRun.firstExecutionStartTime = currentTime;
+        }
+
+        const runDuration = (algorithm === SchedulingAlgorithm.SRTF)
+            ? Math.min(clientToRun.remainingTime, timeSlice)
+            : clientToRun.remainingTime;
+
+        const executionStartTime = currentTime;
+        currentTime += runDuration;
+        clientToRun.remainingTime -= runDuration;
+        
+        ganttChart.push({ clientId: clientToRun.id, start: executionStartTime, end: currentTime, type: 'running' });
+        lastRunningClientId = clientToRun.id;
+
+        const arrivedDuringRun = futureClients.filter(c => c.arrivalTime <= currentTime);
+        if (arrivedDuringRun.length > 0) {
+            readyQueue.push(...arrivedDuringRun);
+            futureClients = futureClients.filter(c => !arrivedDuringRun.find(ac => ac.id === c.id));
+        }
+
+        if (clientToRun.remainingTime > 0) {
+            readyQueue.push(clientToRun);
+        } else {
+            clientToRun.completionTime = currentTime;
+            clientToRun.waitingTime = (clientToRun.firstExecutionStartTime as number) - clientToRun.arrivalTime;
+            clientToRun.turnaroundTime = clientToRun.completionTime - (clientToRun.firstExecutionStartTime as number);
+            completedClients.push(clientToRun);
+        }
+    }
+    return { ganttChart, completedClients, contextSwitchCount };
+};
+
+const runRoundRobinSimulation = (
+    clients: Client[],
+    timeSlice: number,
+    contextSwitchCost: number
+): { ganttChart: GanttBlock[]; completedClients: Client[]; contextSwitchCount: number } => {
+    const completedClients: Client[] = [];
+    const ganttChart: GanttBlock[] = [];
+    let readyQueue: Client[] = [];
+    let currentTime = 0;
+    let lastRunningClientId: number | null = null;
+    let contextSwitchCount = 0;
+    let futureClients = [...clients].sort((a, b) => a.arrivalTime - b.arrivalTime);
+    let rrPointer = 0;
+
+    while (completedClients.length < clients.length) {
+        const newlyArrived = futureClients.filter(c => c.arrivalTime <= currentTime);
+        if (newlyArrived.length > 0) {
+            readyQueue.push(...newlyArrived);
+            futureClients = futureClients.filter(c => !newlyArrived.find(na => na.id === c.id));
+        }
+
+        if (readyQueue.length === 0) {
+            if (futureClients.length > 0) {
+                currentTime = futureClients[0].arrivalTime;
+                continue;
+            } else {
+                break;
+            }
+        }
+
+        if (rrPointer >= readyQueue.length) {
+            rrPointer = 0;
+        }
+
+        const clientToRun = readyQueue[rrPointer];
+
+        if (lastRunningClientId !== null && lastRunningClientId !== clientToRun.id) {
+            contextSwitchCount++;
+            if (contextSwitchCost > 0) {
+                ganttChart.push({ clientId: 0, start: currentTime, end: currentTime + contextSwitchCost, type: 'contextSwitch' });
+                currentTime += contextSwitchCost;
+                
+                const arrivedDuringCS = futureClients.filter(c => c.arrivalTime <= currentTime);
+                if (arrivedDuringCS.length > 0) {
+                    readyQueue.push(...arrivedDuringCS);
+                    futureClients = futureClients.filter(c => !arrivedDuringCS.find(ac => ac.id === c.id));
+                }
+            }
+        }
+        
+        if (clientToRun.firstExecutionStartTime === undefined) {
+            clientToRun.firstExecutionStartTime = currentTime;
+        }
+
+        const runDuration = Math.min(clientToRun.remainingTime, timeSlice);
+        const executionStartTime = currentTime;
+        currentTime += runDuration;
+        clientToRun.remainingTime -= runDuration;
+        
+        ganttChart.push({ clientId: clientToRun.id, start: executionStartTime, end: currentTime, type: 'running' });
+        lastRunningClientId = clientToRun.id;
+
+        if (clientToRun.remainingTime <= 0) {
+            clientToRun.completionTime = currentTime;
+            clientToRun.waitingTime = (clientToRun.firstExecutionStartTime as number) - clientToRun.arrivalTime;
+            clientToRun.turnaroundTime = clientToRun.completionTime - (clientToRun.firstExecutionStartTime as number);
+            completedClients.push(clientToRun);
+            readyQueue.splice(rrPointer, 1);
+        } else {
+            rrPointer++;
+        }
+    }
+    return { ganttChart, completedClients, contextSwitchCount };
+};
+
+
 export const runSimulation = (
     initialClients: Client[],
     algorithm: SchedulingAlgorithm,
     timeSlice: number,
     contextSwitchCost: number
 ): SimulationResult => {
-    // Deep copy and sort by arrival time to handle initial state correctly
     let clients = JSON.parse(JSON.stringify(initialClients)) as Client[];
-    clients.sort((a, b) => a.arrivalTime - b.arrivalTime || a.id - b.id);
-    
-    const completedClients: Client[] = [];
-    const ganttChart: GanttBlock[] = [];
-    let readyQueue: Client[] = [];
-    let currentTime = 0;
-    let lastRunningClientId: number | null = null;
-    
-    const getRemainingClients = () => clients.filter(c => c.remainingTime > 0 && !completedClients.find(cc => cc.id === c.id));
+    let result: { ganttChart: GanttBlock[]; completedClients: Client[]; contextSwitchCount: number };
 
-    // The main loop continues as long as there are clients to process or in the ready queue
-    while (getRemainingClients().length > 0 || readyQueue.length > 0) {
-        
-        // Add any clients that have arrived by the current time to the ready queue
-        const newlyArrived = getRemainingClients().filter(c => c.arrivalTime <= currentTime && !readyQueue.find(rq => rq.id === c.id));
-        readyQueue.push(...newlyArrived);
-        
-        // If the ready queue is empty, it means the CPU is idle.
-        // We jump forward in time to the arrival of the next client.
-        if (readyQueue.length === 0) {
-            const remaining = getRemainingClients();
-            if (remaining.length > 0) {
-                currentTime = remaining[0].arrivalTime;
-                const arrivedNow = remaining.filter(c => c.arrivalTime <= currentTime && !readyQueue.find(rq => rq.id === c.id));
-                readyQueue.push(...arrivedNow);
-            } else {
-                break; // No more clients to process
-            }
-        }
-
-        // Select the next client based on the scheduling algorithm
-        let clientToRun: Client;
-        if (algorithm === SchedulingAlgorithm.SJF) { // Non-preemptive
-            readyQueue.sort((a, b) => a.burstTime - b.burstTime || a.id - b.id);
-        } else if (algorithm === SchedulingAlgorithm.SRTF) {
-            readyQueue.sort((a, b) => a.remainingTime - b.remainingTime || a.id - b.id);
-        } else if (algorithm === SchedulingAlgorithm.FCFS) {
-            readyQueue.sort((a, b) => a.arrivalTime - b.arrivalTime || a.id - b.id);
-        }
-        // For Round Robin, no sort is needed as it's a FIFO queue. We just take the first element.
-        
-        clientToRun = readyQueue.shift()!;
-
-        // Apply context switch cost if we are changing which client is running
-        if (lastRunningClientId !== null && lastRunningClientId !== clientToRun.id && contextSwitchCost > 0) {
-            ganttChart.push({ clientId: 0, start: currentTime, end: currentTime + contextSwitchCost, type: 'contextSwitch' });
-            currentTime += contextSwitchCost;
-        }
-
-        // Determine how long this client will run for this turn
-        const runDuration = (algorithm === SchedulingAlgorithm.RR || algorithm === SchedulingAlgorithm.SRTF)
-            ? Math.min(clientToRun.remainingTime, timeSlice)
-            : clientToRun.remainingTime;
-
-        // Add the execution block to the Gantt chart
-        const executionStartTime = currentTime;
-        ganttChart.push({ clientId: clientToRun.id, start: executionStartTime, end: executionStartTime + runDuration, type: 'running' });
-
-        // Update the simulation state
-        currentTime += runDuration;
-        clientToRun.remainingTime -= runDuration;
-        lastRunningClientId = clientToRun.id;
-
-        // After the execution slice, add any clients that arrived *during* that time
-        const arrivedDuringRun = getRemainingClients().filter(c => c.id !== clientToRun.id && c.arrivalTime > executionStartTime && c.arrivalTime <= currentTime && !readyQueue.find(rq => rq.id === c.id));
-        readyQueue.push(...arrivedDuringRun);
-
-        // Handle the client's status after its run
-        if (clientToRun.remainingTime <= 0) {
-            // The client has finished
-            clientToRun.completionTime = currentTime;
-            clientToRun.turnaroundTime = clientToRun.completionTime - clientToRun.arrivalTime;
-            clientToRun.waitingTime = clientToRun.turnaroundTime - clientToRun.burstTime;
-            completedClients.push(clientToRun);
-            lastRunningClientId = null; // The barber is free
-
-            // If another client is ready to go, a context switch occurs
-            if (readyQueue.length > 0 && contextSwitchCost > 0) {
-                ganttChart.push({ clientId: 0, start: currentTime, end: currentTime + contextSwitchCost, type: 'contextSwitch' });
-                currentTime += contextSwitchCost;
-            }
-        } else {
-            // The client was preempted (for RR/SRTF) and needs to be re-queued
-            readyQueue.push(clientToRun);
-        }
+    if (algorithm === SchedulingAlgorithm.RR) {
+        result = runRoundRobinSimulation(clients, timeSlice, contextSwitchCost);
+    } else {
+        result = runStandardSimulation(clients, algorithm, timeSlice, contextSwitchCost);
     }
-    
-    // Final calculations
+
+    const { ganttChart, completedClients, contextSwitchCount } = result;
+
     completedClients.sort((a, b) => a.id - b.id);
 
     const totalTime = ganttChart.length > 0 ? Math.max(...ganttChart.map(b => b.end)) : 0;
     const totalWaitingTime = completedClients.reduce((acc, c) => acc + (c.waitingTime ?? 0), 0);
     const totalTurnaroundTime = completedClients.reduce((acc, c) => acc + (c.turnaroundTime ?? 0), 0);
     const totalClients = completedClients.length;
+    const totalBurstTime = completedClients.reduce((acc, c) => acc + c.burstTime, 0);
+
+    const totalAppliedContextSwitchCost = ganttChart
+        .filter(b => b.type === 'contextSwitch')
+        .reduce((acc, b) => acc + (b.end - b.start), 0);
+
+    const totalBusyTime = totalBurstTime + totalAppliedContextSwitchCost;
 
     return {
         ganttChart,
@@ -109,7 +203,8 @@ export const runSimulation = (
         metrics: {
             averageWaitingTime: totalClients > 0 ? totalWaitingTime / totalClients : 0,
             averageTurnaroundTime: totalClients > 0 ? totalTurnaroundTime / totalClients : 0,
-            throughput: totalClients > 0 ? totalClients / totalTime : 0,
+            throughput: totalBusyTime > 0 ? (totalBurstTime / totalBusyTime) * 100 : 100,
+            contextSwitchCount,
         },
         totalTime,
     };
